@@ -1,0 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; background: #05091A; color: #E8F0FF; font-family: 'Inter', -apple-system, sans-serif; font-size: 14px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1E3050; border-radius: 4px; }
+.leaflet-container { background: #05091A !important; }
+.leaflet-tile { filter: brightness(0.8) hue-rotate(180deg) invert(1) contrast(0.9); }

@@ -1,0 +1,5 @@
+lightgbm==4.6.0
+shap==0.46.0
+numpy==2.2.4
+psycopg2-binary==2.9.9
+structlog==25.5.0

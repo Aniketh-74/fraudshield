@@ -1,0 +1,324 @@
+version: "3.8"
+
+services:
+
+  # ------------------------------------------------------------------ #
+  # Tier 0: Infrastructure — no dependencies                            #
+  # ------------------------------------------------------------------ #
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: frauddb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ #
+  # Tier 1: Kafka broker + MLflow                                       #
+  # ------------------------------------------------------------------ #
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # PLAINTEXT: internal service-to-service communication
+      # PLAINTEXT_HOST: host machine access for local debugging (port 29092)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Disable auto-create — topics created explicitly by kafka-init (avoids wrong partition counts)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 24
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    healthcheck:
+      # kafka-topics --list validates broker is truly ready (not just TCP port open)
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.1
+    container_name: mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ #
+  # Tier 2: Topic initialization — one-shot, no restart                 #
+  # ------------------------------------------------------------------ #
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    # Create 3 topics with 6 partitions each. --if-not-exists is idempotent.
+    # Partitions=6: supports scaling to 6 parallel consumers per group.
+    # Replication-factor=1: single-broker local dev (MUST NOT use 3 — Research Pitfall 5).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic transactions --partitions 6 --replication-factor 1 && \
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic enriched-transactions --partitions 6 --replication-factor 1 && \
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic decisions --partitions 6 --replication-factor 1 && \
+        echo "Topics created successfully" && \
+        kafka-topics --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  # ------------------------------------------------------------------ #
+  # Tier 3: Application services                                        #
+  # ------------------------------------------------------------------ #
+
+  transaction-simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: transaction-simulator
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: transactions
+      TXN_RATE: "10"
+      FRAUD_RATE: "0.03"
+      NUM_USERS: "1000"
+      NUM_MERCHANTS: "200"
+      LOG_LEVEL: INFO
+      DATA_OUTPUT_PATH: /data/transactions.csv
+    volumes:
+      - simulator_data:/data
+    restart: unless-stopped
+
+  feature-enrichment:
+    build:
+      context: ./feature-enrichment
+      dockerfile: Dockerfile
+    container_name: feature-enrichment
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_INPUT_TOPIC: transactions
+      KAFKA_OUTPUT_TOPIC: enriched-transactions
+      KAFKA_GROUP_ID: feature-enrichment-group
+      KAFKA_RETRY_ATTEMPTS: "12"
+      KAFKA_RETRY_INTERVAL_SECONDS: "5"
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+    restart: unless-stopped
+
+  ml-scorer:
+    build:
+      context: ./ml-scorer
+      dockerfile: Dockerfile
+    container_name: ml-scorer
+    # ml-scorer has no Kafka dependency — loads model from volume at startup
+    environment:
+      MODEL_DIR: /app/models
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      WORKERS: "1"
+      RISK_LOW_THRESHOLD: "0.3"
+      RISK_HIGH_THRESHOLD: "0.7"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount training output directory as read-only model source
+      # Training service writes: calibrated_model.pkl, feature_order.json, model.txt
+      - ./training/models:/app/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ #
+  # Tier 3 (parallel): Training service (on-demand, not long-running)   #
+  # ------------------------------------------------------------------ #
+
+  training:
+    build:
+      context: ./training
+      dockerfile: Dockerfile
+    container_name: training
+    profiles:
+      - training
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      CSV_PATH: /data/transactions.csv
+      MODEL_OUTPUT_DIR: /app/models
+      LOG_LEVEL: INFO
+    volumes:
+      - simulator_data:/data:ro
+      - ./training/models:/app/models
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: "no"
+
+  # ------------------------------------------------------------------ #
+  # Tier 4: Stub services (Phase 4/5 implementations)                   #
+  # ------------------------------------------------------------------ #
+
+  decision-engine:
+    build:
+      context: ./decision-engine
+      dockerfile: Dockerfile
+    container_name: decision-engine
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      ml-scorer:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/frauddb
+      SCORER_URL: http://ml-scorer:8000
+      LOG_LEVEL: INFO
+    restart: unless-stopped
+
+  shap-explainer:
+    build:
+      context: ./shap-explainer
+      dockerfile: Dockerfile
+    container_name: shap-explainer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/frauddb
+      MODEL_DIR: /app/models
+      SHAP_POLL_INTERVAL_SECONDS: "5"
+      SHAP_BATCH_SIZE: "50"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./training/models:/app/models:ro
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/frauddb
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dashboard
+    depends_on:
+      - api-gateway
+    environment:
+      API_GATEWAY_URL: http://api-gateway:8080
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+# ------------------------------------------------------------------ #
+# Named volumes                                                        #
+# ------------------------------------------------------------------ #
+
+volumes:
+  postgres_data:
+    driver: local
+  mlflow_artifacts:
+    driver: local
+  simulator_data:
+    driver: local

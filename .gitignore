@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Node / Dashboard
+dashboard/node_modules/
+dashboard/dist/
+
+# ML models (large binary files — copied separately to server)
+training/models/*.pkl
+training/models/*.db
+training/models/model.txt
+
+# Keep these small JSON files
+!training/models/feature_order.json
+!training/models/category_mappings.json
+!training/models/.gitkeep
+
+# Secrets / env
+.env
+.env.*
+*.pem
+*.key
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GCP / cloud
+*.json.bak
+
+# Planning (large)
+.planning/
+
+# Claude Code settings
+.claude/
+
+# Logs
+*.log
+logs/
+
+# Optuna
+*.db
+
+# Large training data files
+training/data/*.csv
+training/data/*.zip
+training/data/*.parquet

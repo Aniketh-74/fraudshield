@@ -1,0 +1,41 @@
+version: "3.8"
+
+# Standalone Docker Compose snippet for the transaction-simulator service.
+# This file can be used for independent testing of the simulator.
+# In Phase 3, this service definition will be merged into the full docker-compose.yml
+# that includes Kafka, Zookeeper, feature enrichment, and the decision engine.
+
+services:
+  transaction-simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-transactions}
+      KAFKA_RETRY_ATTEMPTS: ${KAFKA_RETRY_ATTEMPTS:-12}
+      KAFKA_RETRY_INTERVAL_SECONDS: ${KAFKA_RETRY_INTERVAL_SECONDS:-5}
+      TXN_RATE: ${TXN_RATE:-10}
+      FRAUD_RATE: ${FRAUD_RATE:-0.03}
+      NUM_USERS: ${NUM_USERS:-1000}
+      NUM_MERCHANTS: ${NUM_MERCHANTS:-200}
+      DATA_OUTPUT_PATH: /app/data/transactions.csv
+      OVERWRITE_CSV: ${OVERWRITE_CSV:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - simulator-data:/app/data
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - fraud-detection-network
+
+volumes:
+  simulator-data:
+    driver: local
+
+networks:
+  fraud-detection-network:
+    external: true
+    name: fraud-detection-network

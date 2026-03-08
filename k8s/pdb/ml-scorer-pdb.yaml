@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ml-scorer-pdb
+  namespace: fraud-detection
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ml-scorer

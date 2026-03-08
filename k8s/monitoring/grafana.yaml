@@ -1,0 +1,112 @@
+---
+# grafana.yaml
+# Grafana Deployment + Service for the fraud-detection namespace.
+# MON-03 verified: bounded labels only (risk_level used as label, not user_id/transaction_id)
+#
+# Three ConfigMap volume mounts are REQUIRED for the dashboard to auto-load:
+#   1. grafana-datasources      → /etc/grafana/provisioning/datasources/   (Prometheus connection)
+#   2. grafana-dashboard-provider → /etc/grafana/provisioning/dashboards/  (tells Grafana where to look)
+#   3. grafana-fraud-dashboard  → /var/lib/grafana/dashboards/             (actual dashboard JSON)
+#
+# Missing either mount #2 or #3 causes the dashboard to silently not appear.
+# GF_AUTH_ANONYMOUS_ENABLED=true allows recruiters to open the dashboard without login.
+# NodePort 30300 — Grafana accessible at http://localhost:30300 after port-forwarding or NodePort.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: fraud-detection
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.0
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            # Allow anonymous access — recruiter can open dashboard without logging in
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"
+            # Admin password set to "admin" for demo purposes
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            # Disable login form for anonymous-first experience
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "false"
+            # Set base URL for correct asset loading
+            - name: GF_SERVER_ROOT_URL
+              value: "%(protocol)s://%(domain)s:%(http_port)s/"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            # Mount 1: Prometheus datasource config
+            # Tells Grafana where Prometheus lives (http://prometheus-service:9090)
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources/
+            # Mount 2: Dashboard provider config
+            # Tells Grafana to scan /var/lib/grafana/dashboards/ for JSON files
+            - name: grafana-dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards/
+            # Mount 3: Fraud detection dashboard JSON
+            # The actual dashboard JSON Grafana loads from the provider-configured path
+            - name: grafana-fraud-dashboard
+              mountPath: /var/lib/grafana/dashboards/
+      volumes:
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        - name: grafana-dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: grafana-fraud-dashboard
+          configMap:
+            name: grafana-fraud-dashboard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: fraud-detection
+  labels:
+    app: grafana
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      nodePort: 30300

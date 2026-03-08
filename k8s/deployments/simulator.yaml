@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  namespace: fraud-detection
+  labels:
+    app: simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: simulator
+        image: fraud-detection/transaction-simulator:latest
+        imagePullPolicy: Never
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service.fraud-detection.svc.cluster.local:9092"
+        - name: KAFKA_TOPIC
+          value: "transactions"
+        - name: TXN_RATE
+          value: "10"
+        - name: FRAUD_RATE
+          value: "0.03"
+        - name: NUM_USERS
+          value: "1000"
+        - name: NUM_MERCHANTS
+          value: "200"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: DATA_OUTPUT_PATH
+          value: "/data/transactions.csv"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi

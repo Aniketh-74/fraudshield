@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-network-policy
+  namespace: fraud-detection
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: feature-enrichment
+    - podSelector:
+        matchLabels:
+          app: ml-scorer
+    ports:
+    - protocol: TCP
+      port: 6379

@@ -1,0 +1,8 @@
+# Transaction Simulator — Python dependencies
+#
+# Intentionally minimal: no Faker (uuid4 used for IDs), no csv library
+# substitutes (stdlib csv.DictWriter is sufficient), no geocoding library
+# (haversine computed via math stdlib).
+#
+confluent-kafka>=2.3.0
+structlog>=24.1.0

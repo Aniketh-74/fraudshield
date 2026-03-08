@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-enrichment
+  namespace: fraud-detection
+  labels:
+    app: feature-enrichment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: feature-enrichment
+  template:
+    metadata:
+      labels:
+        app: feature-enrichment
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: feature-enrichment
+        image: fraud-detection/feature-enrichment:latest
+        imagePullPolicy: Never
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-service.fraud-detection.svc.cluster.local:9092"
+        - name: KAFKA_INPUT_TOPIC
+          value: "transactions"
+        - name: KAFKA_OUTPUT_TOPIC
+          value: "enriched-transactions"
+        - name: KAFKA_GROUP_ID
+          value: "feature-enrichment-group"
+        - name: KAFKA_RETRY_ATTEMPTS
+          value: "12"
+        - name: KAFKA_RETRY_INTERVAL_SECONDS
+          value: "5"
+        - name: REDIS_URL
+          value: "redis://redis-service:6379"
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

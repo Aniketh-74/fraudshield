@@ -1,0 +1,41 @@
+rules:
+  - name: impossible_travel
+    enabled: true
+    action: BLOCK
+    condition:
+      field: geo_velocity_kmh
+      operator: ">"
+      value: 500
+
+  - name: high_value_new_merchant
+    enabled: true
+    action: BLOCK
+    condition:
+      all:
+        - {field: amount, operator: ">", value: 100000}
+        - {field: is_new_merchant, operator: "==", value: 1}
+        - {field: is_international, operator: "==", value: 1}
+
+  - name: velocity_abuse
+    enabled: true
+    action: FLAG
+    condition:
+      field: txn_count_1h
+      operator: ">"
+      value: 10
+
+  - name: midnight_high_value
+    enabled: true
+    action: FLAG
+    condition:
+      all:
+        - {field: hour_of_day, operator: "in", value: [1, 2, 3, 4, 5]}
+        - {field: amount, operator: ">", value: 10000}
+
+  - name: amount_spike
+    enabled: true
+    action: FLAG
+    condition:
+      field: amount_deviation
+      operator: ">"
+      value: 3.0

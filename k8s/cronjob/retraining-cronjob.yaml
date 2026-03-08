@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-retraining
+  namespace: fraud-detection
+spec:
+  # Run weekly on Sunday at 2AM UTC
+  schedule: "0 2 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: model-retraining
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: retraining
+            image: fraud-detection/transaction-simulator:latest
+            imagePullPolicy: Never
+            # Placeholder: triggers model retraining pipeline
+            # In a full production setup, this would invoke a training job
+            # that reads transaction data, retrains the LightGBM model,
+            # and updates the model artifact for ml-scorer pods to pick up.
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              echo "Model retraining job triggered at $(date)"
+              echo "In production: invoke training pipeline here"
+              echo "  1. Read transactions from Postgres/CSV"
+              echo "  2. Run train.py to produce new model.txt + calibrated_model.pkl"
+              echo "  3. Push artifacts to model registry or shared PVC"
+              echo "  4. Trigger rolling restart of ml-scorer deployment"
+              echo "Retraining placeholder complete."
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi

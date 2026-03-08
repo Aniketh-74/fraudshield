@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-scorer
+  namespace: fraud-detection
+  labels:
+    app: ml-scorer
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ml-scorer
+  template:
+    metadata:
+      labels:
+        app: ml-scorer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: ml-scorer
+        image: fraud-detection/ml-scorer:latest
+        # imagePullPolicy: Never — image loaded into Kind via kind load docker-image
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: MODEL_DIR
+          value: "/app/models"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "8000"
+        - name: WORKERS
+          value: "1"
+        - name: RISK_LOW_THRESHOLD
+          value: "0.3"
+        - name: RISK_HIGH_THRESHOLD
+          value: "0.7"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 5

@@ -1,0 +1,23 @@
+---
+# grafana-dashboard-provider.yaml
+# Grafana dashboard provider provisioning ConfigMap.
+# Mounted at /etc/grafana/provisioning/dashboards/ in the Grafana container.
+# Tells Grafana to load dashboard JSON files from /var/lib/grafana/dashboards/.
+# The actual dashboard JSON is in grafana-dashboard-json.yaml (separate ConfigMap).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: fraud-detection
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: fraud-detection
+        orgId: 1
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards

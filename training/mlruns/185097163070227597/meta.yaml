@@ -1,0 +1,7 @@
+artifact_location: file:C:/Users/Hp/Desktop/learning/new/training/mlruns/185097163070227597
+creation_time: 1772955517112
+experiment_id: '185097163070227597'
+last_update_time: 1772955517112
+lifecycle_stage: active
+name: fraud-detection-lgbm
+workspace: default

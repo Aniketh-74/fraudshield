@@ -1,0 +1,257 @@
+---
+# grafana-dashboard-json.yaml
+# Grafana dashboard JSON as a ConfigMap.
+# Mounted at /var/lib/grafana/dashboards/ in the Grafana container.
+# Grafana's dashboard-provider (grafana-dashboard-provider.yaml) points to that directory
+# and auto-loads this file — no manual import required.
+#
+# Dashboard: Fraud Detection Pipeline
+# 6 panels covering: throughput, latency, decision distribution, fraud rate, service health, p50 latency
+# MON-03 compliant: all PromQL queries use bounded labels (risk_level, namespace, service)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-fraud-dashboard
+  namespace: fraud-detection
+data:
+  fraud-detection.json: |
+    {
+      "__inputs": [],
+      "__requires": [],
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "id": 1,
+          "title": "Decision Throughput",
+          "description": "Total fraud predictions processed per minute",
+          "type": "stat",
+          "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "-- Grafana --"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqpm",
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "yellow", "value": 10},
+                  {"color": "green", "value": 50}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {"calcs": ["lastNotNull"]},
+            "orientation": "auto",
+            "textMode": "auto",
+            "colorMode": "background",
+            "graphMode": "area"
+          },
+          "targets": [
+            {
+              "expr": "rate(predictions_total[1m]) * 60",
+              "legendFormat": "predictions/min",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Prediction p99 Latency",
+          "description": "99th percentile prediction latency — SLA target: <50ms",
+          "type": "gauge",
+          "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "-- Grafana --"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "min": 0,
+              "max": 0.5,
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 0.05},
+                  {"color": "red", "value": 0.1}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {"calcs": ["lastNotNull"]},
+            "orientation": "auto",
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, rate(prediction_latency_seconds_bucket[5m]))",
+              "legendFormat": "p99 latency",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Decision Distribution (Last Hour)",
+          "description": "APPROVE / FLAG / BLOCK counts by risk_level over the last hour",
+          "type": "piechart",
+          "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "-- Grafana --"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"}
+            },
+            "overrides": []
+          },
+          "options": {
+            "pieType": "pie",
+            "displayLabels": ["name", "percent"],
+            "legendDisplayMode": "table",
+            "legendPlacement": "right",
+            "tooltipMode": "single"
+          },
+          "targets": [
+            {
+              "expr": "increase(predictions_total[1h])",
+              "legendFormat": "{{risk_level}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Fraud Rate Over Time",
+          "description": "Percentage of HIGH risk predictions over time",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "-- Grafana --"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 0.1}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": {"mode": "single"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          },
+          "targets": [
+            {
+              "expr": "rate(predictions_total{risk_level=\"HIGH\"}[5m]) / rate(predictions_total[5m])",
+              "legendFormat": "fraud rate",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Service Health",
+          "description": "1 = up, 0 = down for each fraud-detection service",
+          "type": "table",
+          "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "-- Grafana --"},
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "displayMode": "color-background",
+                "align": "center"
+              },
+              "mappings": [
+                {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": null},
+                  {"color": "green", "value": 1}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [{"displayName": "Value", "desc": false}]
+          },
+          "targets": [
+            {
+              "expr": "up{namespace=\"fraud-detection\"}",
+              "legendFormat": "{{service}}",
+              "refId": "A",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true}}}
+          ]
+        },
+        {
+          "id": 6,
+          "title": "p50 Latency Over Time",
+          "description": "Median prediction latency (50th percentile) — typical user experience",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "-- Grafana --"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "min": 0,
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": {"mode": "single"},
+            "legend": {"displayMode": "list", "placement": "bottom"}
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(prediction_latency_seconds_bucket[5m]))",
+              "legendFormat": "p50 latency",
+              "refId": "A"
+            }
+          ]
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 39,
+      "tags": ["fraud-detection"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "Fraud Detection Pipeline",
+      "uid": "fraud-detection-v1",
+      "version": 1
+    }

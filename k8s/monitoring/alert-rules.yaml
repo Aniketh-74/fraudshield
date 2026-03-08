@@ -1,0 +1,51 @@
+---
+# alert-rules.yaml
+# Prometheus alert rules for the fraud-detection pipeline.
+# Three alert rules covering: service availability, Kafka throughput, and prediction error rate.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: fraud-detection
+data:
+  fraud-detection-rules.yaml: |
+    groups:
+      - name: fraud-detection-alerts
+        rules:
+          # Alert 1: ServiceDown
+          # Fires when any fraud-detection pod stops exporting metrics for 1 minute.
+          # Severity: critical — pipeline is broken if any service is down.
+          - alert: ServiceDown
+            expr: up{namespace="fraud-detection"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Service {{ $labels.service }} is down"
+              description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been unreachable for more than 1 minute."
+
+          # Alert 2: HighKafkaConsumerLag
+          # Fires when a consumer group falls more than 1000 messages behind.
+          # NOTE: This metric requires a kafka-exporter sidecar for full accuracy.
+          # kafka-exporter exposes kafka_consumer_group_lag from the broker's offset metadata.
+          # Without kafka-exporter, this rule will never fire (metric absent = no alert).
+          - alert: HighKafkaConsumerLag
+            expr: kafka_consumer_group_lag > 1000
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High Kafka consumer lag detected"
+              description: "Consumer group {{ $labels.consumergroup }} on topic {{ $labels.topic }} has lag of {{ $value }} messages. Check decision-engine and feature-enrichment throughput."
+
+          # Alert 3: HighPredictionErrorRate
+          # Fires when more than 5% of predictions result in an error.
+          # prediction_errors_total and predictions_total come from ml-scorer/metrics.py.
+          - alert: HighPredictionErrorRate
+            expr: rate(prediction_errors_total[5m]) / rate(predictions_total[5m]) > 0.05
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High prediction error rate"
+              description: "ML scorer error rate is {{ $value | humanizePercentage }} over the last 5 minutes. Check ml-scorer logs for model loading or inference errors."

@@ -1,0 +1,16 @@
+[
+  "txn_count_1h",
+  "txn_count_6h",
+  "txn_count_24h",
+  "avg_amount_7d",
+  "amount_deviation",
+  "time_since_last_txn_seconds",
+  "unique_merchants_24h",
+  "max_amount_24h",
+  "is_new_merchant",
+  "hour_of_day",
+  "is_weekend",
+  "geo_distance_km",
+  "geo_velocity_kmh",
+  "merchant_category_enc"
+]

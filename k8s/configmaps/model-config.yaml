@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-config
+  namespace: fraud-detection
+data:
+  model_version: "1.0.0"
+  feature_count: "14"
+  fraud_threshold_high: "0.7"
+  fraud_threshold_medium: "0.3"
+  feature_order: |
+    txn_count_1h
+    txn_count_6h
+    txn_count_24h
+    avg_amount_7d
+    amount_deviation
+    time_since_last_txn_seconds
+    unique_merchants_24h
+    max_amount_24h
+    is_new_merchant
+    hour_of_day
+    is_weekend
+    geo_distance_km
+    geo_velocity_kmh
+    merchant_category_enc

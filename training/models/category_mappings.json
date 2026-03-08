@@ -1,0 +1,10 @@
+{
+  "merchant_category": {
+    "groceries": 0,
+    "food": 1,
+    "electronics": 2,
+    "travel": 3,
+    "entertainment": 4,
+    "transfers": 5
+  }
+}

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shap-explainer
+  namespace: fraud-detection
+  labels:
+    app: shap-explainer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shap-explainer
+  template:
+    metadata:
+      labels:
+        app: shap-explainer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: shap-explainer
+        image: fraud-detection/shap-explainer:latest
+        imagePullPolicy: Never
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://frauduser:fraudpassword@postgres-service:5432/frauddb"
+        - name: MODEL_DIR
+          value: "/app/models"
+        - name: SHAP_POLL_INTERVAL_SECONDS
+          value: "5"
+        - name: SHAP_BATCH_SIZE
+          value: "50"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi

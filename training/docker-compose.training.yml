@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  ml-training:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - CSV_PATH=/data/transactions.csv
+      - MODEL_OUTPUT_DIR=/artifacts
+      - MLFLOW_TRACKING_URI=file:./mlruns
+      - N_TRIALS=${N_TRIALS:-100}
+    volumes:
+      - ../simulator/data:/data:ro
+      - ./artifacts:/artifacts
+      - ./mlruns:/app/mlruns
+    restart: "no"
