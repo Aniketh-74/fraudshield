@@ -8,7 +8,8 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    port: 5173,
+    port: 3000,
+    allowedHosts: 'all',
     proxy: {
       '/api': 'http://localhost:8080',
       '/ws': {
